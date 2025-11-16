@@ -1,0 +1,25 @@
+{
+  "name": "vulntour",
+  "version": "1.0.0",
+  "description": "vulnerable node site for pentesting",
+  "license": "MIT",
+  "author": "debang5hu",
+  "type": "commonjs",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "18": "^0.0.0",
+    "bcrypt": "^6.0.0",
+    "better-sqlite3": "^8.0.0",
+    "body-parser": "^1.20.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.0.0",
+    "express": "^4.21.2",
+    "express-rate-limit": "^8.2.1",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.0",
+    "morgan": "^1.10.0"
+  }
+}

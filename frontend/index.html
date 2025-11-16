@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>VulnTour – Travel Companion</title>
+
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #f5f5f5;
+    }
+    .hidden { display: none !important; }
+    .container { max-width: 900px; margin: auto; padding: 20px; }
+
+    .card {
+      background: #fff;
+      padding: 16px;
+      border-radius: 8px;
+      margin-bottom: 15px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+
+    button, .btn {
+      padding: 8px 14px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    .primary { background: #007bff; color: #fff; }
+    .danger  { background: #c0392b; color: #fff; }
+    .ghost   { background: #eee; }
+
+    .full { width: 100%; }
+    ul { padding-left: 20px; }
+
+    input, textarea, select {
+      width: 100%;
+      padding: 8px;
+      margin: 4px 0 10px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+    }
+
+    nav {
+      background: #222;
+      color: #fff;
+      padding: 10px;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+    nav button { background: #444; color: #fff; }
+
+    #toast {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: #333;
+      color: #fff;
+      padding: 10px 16px;
+      border-radius: 6px;
+      opacity: 0;
+      transition: .3s;
+    }
+    #toast.show { opacity: 1; }
+
+    .tour-card {
+      background: #fff;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 10px;
+      border-left: 4px solid #007bff;
+    }
+
+    .tour-head h4 { margin: 0; }
+    .card-actions { margin-top: 10px; display: flex; gap: 10px; }
+
+    #chat_messages {
+      height: 220px;
+      overflow-y: auto;
+      background: #fff;
+      padding: 10px;
+      border-radius: 6px;
+    }
+
+    .chat-msg { padding: 5px 0; }
+
+    .tab {
+      padding: 8px 14px;
+      cursor: pointer;
+      background: #eee;
+      border-radius: 6px;
+    }
+    .tab.active { background: #007bff; color:#fff; }
+  </style>
+</head>
+
+<body>
+
+<div id="toast"></div>
+
+<!-- ============================ AUTH VIEW ============================ -->
+<div id="auth_view" class="container">
+
+  <div class="card">
+    <div style="display:flex; gap:10px; margin-bottom:15px;">
+      <div class="tab active" data-tab="login">Login</div>
+      <div class="tab" data-tab="register">Register</div>
+    </div>
+
+    <!-- LOGIN -->
+    <div id="tab_login">
+      <input id="login_username" placeholder="Username" />
+      <input id="login_password" type="password" placeholder="Password" />
+      <button id="btn_login" class="primary full">Login</button>
+      <p><a href="#" id="btn_forgot">Forgot password?</a></p>
+    </div>
+
+    <!-- REGISTER -->
+    <div id="tab_register" class="hidden">
+      <input id="reg_username" placeholder="Username" />
+      <input id="reg_email" placeholder="Email" />
+      <input id="reg_password" type="password" placeholder="Password" />
+      <button id="btn_register" class="primary full">Register</button>
+    </div>
+
+  </div>
+
+</div>
+
+<!-- ============================ DASHBOARD VIEW ============================ -->
+<div id="dashboard_view" class="hidden">
+
+  <nav id="top_nav">
+    <button onclick="showPanel('tours_panel')">Tours</button>
+    <button onclick="showPanel('friend_panel')">Friends</button>
+    <button onclick="showPanel('group_panel')">Groups</button>
+    <button onclick="showPanel('chat_panel')">Chat</button>
+    <button onclick="showPanel('about_panel')">About</button>
+
+    <!-- Admin button (hidden for non-admin, handled by app.js / /api/me) -->
+    <button id="nav_admin_btn" onclick="showPanel('admin_panel')" class="hidden">Admin</button>
+
+    <button id="btn_logout" style="margin-left:auto;">Logout</button>
+  </nav>
+
+  <div class="container">
+
+    <!-- ====================== TOURS ====================== -->
+    <div id="tours_panel" class="card">
+      <h2>Tours</h2>
+
+      <input id="tour_title" placeholder="Title" />
+      <input id="tour_location" placeholder="Location" />
+      <input id="tour_price" type="number" placeholder="Price" />
+      <input id="tour_duration" type="number" placeholder="Duration (days)" />
+      <textarea id="tour_description" placeholder="Description"></textarea>
+
+      <button id="btn_create_tour" class="primary full">Create Tour</button>
+      <button id="btn_refresh" class="ghost full" style="margin-top:8px;">Refresh</button>
+
+      <h3 style="margin-top:20px;">Available Tours</h3>
+      <div id="tour_list"></div>
+    </div>
+
+    <!-- ====================== FRIENDS ====================== -->
+    <div id="friend_panel" class="card hidden">
+      <h2>Friends</h2>
+
+      <input id="friend_search" placeholder="Search username..." />
+      <button id="btn_search_friend" class="primary">Send Request</button>
+
+      <!-- Add friend search results container -->
+      <ul id="friend_results"></ul>
+
+      <h3 style="margin-top:20px;">Friend Requests</h3>
+      <ul id="friend_requests"></ul>
+
+      <h3>Your Friends</h3>
+      <ul id="friend_list"></ul>
+
+      <h3 style="margin-top:20px;">Friend Requests</h3>
+      <ul id="friend_requests"></ul>
+    </div>
+
+
+    <!-- ====================== GROUPS ====================== -->
+    <div id="group_panel" class="card hidden">
+      <h2>Group Travel</h2>
+
+      <input id="group_tour_id" placeholder="Group / Tour ID" />
+      <button id="btn_join_group" class="primary">Join Group</button>
+      <button id="btn_leave_group" class="danger">Leave Group</button>
+      
+      <h4 style="margin-top:15px;">Your Tours & Groups</h4>
+      <ul id="joined_tours"></ul>
+    </div>
+
+    <!-- ====================== CHAT ====================== -->
+    <div id="chat_panel" class="card hidden">
+      <h2>Group Chat</h2>
+
+      <div id="chat_box" class="hidden">
+        <div id="chat_messages"></div>
+        <input id="chat_input" placeholder="Message..." />
+        <button id="btn_send_chat" class="primary full" style="margin-top:8px;">Send</button>
+      </div>
+    </div>
+
+    <!-- ====================== ABOUT ====================== -->
+    <div id="about_panel" class="card hidden">
+      <h2>About VulnTour</h2>
+      <p>
+        VulnTour is a demo travel companion platform where users:
+      </p>
+      <ul>
+        <li>Create and join tours</li>
+        <li>Request and accept friends</li>
+        <li>Form groups and chat</li>
+      </ul>
+      <p>This project is for learning and educational use only.</p>
+    </div>
+
+    <!-- ====================== ADMIN ====================== -->
+    <div id="admin_panel" class="card hidden">
+      <h2>Admin Tools</h2>
+      <textarea id="admin_query" placeholder="Enter admin query..."></textarea>
+      <button id="btn_admin_query" class="primary">Run</button>
+      <pre id="admin_response" style="margin-top:10px;"></pre>
+    </div>
+
+  </div>
+</div>
+
+<!-- ============================ TAB SWITCHER ============================ -->
+<script>
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+
+    const name = tab.dataset.tab;
+    ['login','register'].forEach(x => {
+      if (x === name) document.getElementById(`tab_${x}`).classList.remove('hidden');
+      else document.getElementById(`tab_${x}`).classList.add('hidden');
+    });
+  });
+});
+
+function showPanel(id){
+  ['tours_panel','friend_panel','group_panel','chat_panel','about_panel','admin_panel']
+    .forEach(p => document.getElementById(p).classList.add('hidden'));
+  document.getElementById(id).classList.remove('hidden');
+}
+</script>
+
+<script src="app.js"></script>
+</body>
+</html>
