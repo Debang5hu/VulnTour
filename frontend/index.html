@@ -94,6 +94,35 @@
       border-radius: 6px;
     }
     .tab.active { background: #007bff; color:#fff; }
+
+    #top_nav {
+        background: #222;
+        color: #fff;
+        padding: 10px;
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        font-family: Arial, sans-serif;
+        font-weight: 500;
+    }
+
+        #top_nav button {
+        background: #444;
+        color: #fff;
+        border-radius: 6px;
+        padding: 8px 14px;
+        border: none;
+        cursor: pointer;
+        transition: background-color 0.3s ease;
+    }
+
+    #top_nav button:hover {
+        background: #555;
+    }
+
+    #user_display {
+        user-select: none;
+    }
   </style>
 </head>
 
@@ -137,11 +166,13 @@
     <button onclick="showPanel('tours_panel')">Tours</button>
     <button onclick="showPanel('friend_panel')">Friends</button>
     <button onclick="showPanel('group_panel')">Groups</button>
-    <button onclick="showPanel('chat_panel')">Chat</button>
     <button onclick="showPanel('about_panel')">About</button>
 
     <!-- Admin button (hidden for non-admin, handled by app.js / /api/me) -->
     <button id="nav_admin_btn" onclick="showPanel('admin_panel')" class="hidden">Admin</button>
+
+    <!-- username -->
+    <div id="user_display" style="color:#fff; margin-left: 15px; font-weight: 600;"></div>
 
     <button id="btn_logout" style="margin-left:auto;">Logout</button>
   </nav>
@@ -165,63 +196,54 @@
       <div id="tour_list"></div>
     </div>
 
+
+    
+
     <!-- ====================== FRIENDS ====================== -->
-    <div id="friend_panel" class="card hidden">
-      <h2>Friends</h2>
+  <div id="friend_panel" class="card hidden" role="region" aria-labelledby="friend_panel_header">
+    <h2 id="friend_panel_header">Friends</h2>
 
-      <input id="friend_search" placeholder="Search username..." />
-      <button id="btn_search_friend" class="primary">Send Request</button>
+    <input id="friend_search" placeholder="Search username..." aria-label="Search username" />
+    <button id="btn_search_friend" class="primary" aria-describedby="search_desc">Send Request</button>
+    <p id="search_desc" class="visually-hidden">Search for a friend by username and send a friend request</p>
 
-      <!-- Add friend search results container -->
-      <ul id="friend_results"></ul>
+    <!-- Add friend search results container -->
+    <ul id="friend_results" aria-live="polite" aria-label="Search results for friends"></ul>
 
-      <h3 style="margin-top:20px;">Friend Requests</h3>
-      <ul id="friend_requests"></ul>
+    <h3 style="margin-top:20px;">Friend Requests</h3>
+    <ul id="friend_requests" aria-live="polite" aria-label="Incoming friend requests"></ul>
 
-      <h3>Your Friends</h3>
-      <ul id="friend_list"></ul>
-
-      <h3 style="margin-top:20px;">Friend Requests</h3>
-      <ul id="friend_requests"></ul>
-    </div>
+    <h3>Your Friends</h3>
+    <ul id="friend_list" aria-live="polite" aria-label="Your friend list"></ul>
+  </div>
 
 
     <!-- ====================== GROUPS ====================== -->
     <div id="group_panel" class="card hidden">
-      <h2>Group Travel</h2>
+        <h2>Group Travel</h2>
 
-      <input id="group_tour_id" placeholder="Group / Tour ID" />
-      <button id="btn_join_group" class="primary">Join Group</button>
-      <button id="btn_leave_group" class="danger">Leave Group</button>
-      
-      <h4 style="margin-top:15px;">Your Tours & Groups</h4>
-      <ul id="joined_tours"></ul>
-    </div>
+        <h4 style="margin-top:15px;">Your Tours & Groups</h4>
+        <ul id="joined_tours"></ul>
+        <div id="group_members" class="muted" style="margin-top:10px;">Select a group to see members</div>
 
-    <!-- ====================== CHAT ====================== -->
-    <div id="chat_panel" class="card hidden">
-      <h2>Group Chat</h2>
-
-      <div id="chat_box" class="hidden">
-        <div id="chat_messages"></div>
-        <input id="chat_input" placeholder="Message..." />
-        <button id="btn_send_chat" class="primary full" style="margin-top:8px;">Send</button>
-      </div>
+        <div id="group_chat_area" style="margin-top:20px;">
+            <div id="chat_messages" style="height: 220px; overflow-y: auto; background: #fff; padding: 10px; border-radius: 6px;"></div>
+            <input id="chat_input" placeholder="Message..." style="width: 100%; margin-top: 10px; padding: 8px; border-radius: 4px; border: 1px solid #ccc;" />
+            <button id="btn_send_chat" class="primary full" style="margin-top: 8px;">Send</button>
+        </div>
     </div>
 
     <!-- ====================== ABOUT ====================== -->
     <div id="about_panel" class="card hidden">
       <h2>About VulnTour</h2>
       <p>
-        VulnTour is a demo travel companion platform where users:
+        <strong>VulnTour</strong> is an intentionally <strong>vulnerable</strong> travel-themed web app built with modern technologies, designed for learning and practicing real-world security testing. Users can make friends, join travel groups, and chat with others heading to the same destination all through APIs secured with JWTs that are purposefully flawed for testing. This platform is meant for hands-on exploration of web vulnerabilities (API + JWT). New vulnerabilities will be added regularly, and community contributions are always welcome.
       </p>
-      <ul>
-        <li>Create and join tours</li>
-        <li>Request and accept friends</li>
-        <li>Form groups and chat</li>
-      </ul>
-      <p>This project is for learning and educational use only.</p>
+      <p>Created with ❤️ by @debang5hu — for educational purposes only.</p>
     </div>
+
+
+    
 
     <!-- ====================== ADMIN ====================== -->
     <div id="admin_panel" class="card hidden">
@@ -249,11 +271,29 @@ document.querySelectorAll('.tab').forEach(tab => {
   });
 });
 
-function showPanel(id){
-  ['tours_panel','friend_panel','group_panel','chat_panel','about_panel','admin_panel']
+
+function showPanel(id) {
+  ['tours_panel', 'friend_panel', 'group_panel', 'about_panel', 'admin_panel']
     .forEach(p => document.getElementById(p).classList.add('hidden'));
+
   document.getElementById(id).classList.remove('hidden');
+
+  // Reload data each time panel is shown
+  switch (id) {
+    case 'tours_panel':
+      loadTours();
+      break;
+    case 'friend_panel':
+      loadFriends();
+      loadFriendRequests();
+      break;
+    case 'group_panel':
+      loadJoinedTours();
+      loadGroupChats();
+      break;
+  }
 }
+
 </script>
 
 <script src="app.js"></script>

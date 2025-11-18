@@ -1,15 +1,60 @@
-/*
- * Deliberately vulnerable Node.js + Express API (SQLite)
- * WARNING: Unsafe code. Run in an isolated VM/container for lab testing only.
+/**
  * 
- * just a playground to pentest with modern frameworks :)
+ * 
+ * [VulnTour]
+ *    Vulnerable Node.js implementation + Express API (SQLite)
+ * 
+ *     /backend
+ *          -  server.js contains the API endpoints required by the site to work efficiently
+ *          -  init.sql contains the sqlite queries 
+ *          -  Dockerfile  contains the instruction for the docker-compose file
+ * 
+ * 
+ *     NOTE:
+ *          - Incase of running it without using Docker, your system should have "Node 20"
+ *          - "libsqlite3-dev" package is required for better-sqlite3   [apt install libsqlite3-dev -y] (linux)
+ * 
+ * 
+ * 
+ * 
+ * WARNING: Unsafe code. Run in lab environments only.
+ * 
+ * [Run]
+ *    - docker-compose up -d --build
+ *    - docker-compose down
+ * 
+ * 
+ * 
+ * just a playground to pentest with modern frameworks :) 
+ * 
+ * 
+ * 
+ * [Vulnerabilities]
+ * 
+ * APIs
+ *  - mass assignment
+ *  - bola
+ * 
+ * 
+ * JWT
+ *  - weak secret key
+ *  - algorithm confusion attack
+ *  - sensitive data exposure
+ *  - idor
+ * 
+ * 
+ * To add Business Flaws and oauth implementation flaws
+ * 
+ * 
+ * 
+ * [NOTE] CONTRIBUTIONS are welcome just add some bugs which got medium - high severity in the market 
+ * 
+ * 
  * @debang5hu
  * 
- * 
- * 
- * 
- * 
  */
+
+
 
 const express = require('express');
 const jwt = require('jsonwebtoken');
@@ -23,17 +68,16 @@ const rateLimit = require('express-rate-limit');
 const bcrypt = require('bcrypt');
 require('dotenv').config();
 
+// store pass $12$
+const saltRounds = 12;
+
 // db setup
 const DB_FILE = process.env.DB_FILE || 'database.sqlite3';
 const isNew = !fs.existsSync(DB_FILE);
 const db = new Database(DB_FILE);
 
 const PORT = process.env.PORT || 5000;
-const JWT_SECRET = process.env.JWT_SECRET || 'mychemicalromance';  // weak secret key
-
-// store pass
-const saltRounds = 12;
-
+const JWT_SECRET = process.env.JWT_SECRET || 'mychemicalromance';  // weak secret key  [hardcode shit tho]
 
 if (isNew) {
   const init_sql = fs.readFileSync('./init.sql', 'utf8');
@@ -52,26 +96,23 @@ app.use(express.urlencoded({ extended: false, limit: '100kb' }));
 // rate limit
 const limiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 100,   // to change later
+  max: 100,   // 60
   standardHeaders: true,
   legacyHeaders: false
 });
-app.use(limiter);
+
+app.use(limiter);  // init rate limit
 
 
-
-
-// CORS Config
+// CORS config
 const rawOrigins = process.env.CORS_ORIGINS || 'http://localhost:3000, http://127.0.0.1, http://localhost';
 const allowedOrigins = rawOrigins.split(',').map(s => s.trim()).filter(Boolean);
-
-console.log('[DEBUG] Allowed origins:', allowedOrigins);
 
 const corsOptions = {
   origin: function (origin, callback) {
     if (!origin) return callback(null, true);
     if (allowedOrigins.includes(origin)) {
-        console.log('[CORS] Allowed:', origin);  //debug
+        //console.log('[CORS] Allowed:', origin); 
         return callback(null, true);
     }
 
@@ -83,15 +124,17 @@ const corsOptions = {
   optionsSuccessStatus: 204
 };
 
-app.use(cors(corsOptions));
+app.use(cors(corsOptions)); // init cors
 app.options('*', cors(corsOptions));  // browser preflight
 
-// utility
+
+
+/*                        helper funcs */
+
+// id
 function makeId(prefix = 'id', lenBytes = 8) {
   return prefix + crypto.randomBytes(lenBytes).toString('hex');
 }
-
-
 
 function signToken(payload) {
   return jwt.sign(payload, JWT_SECRET);
@@ -99,7 +142,7 @@ function signToken(payload) {
 
 function verifyToken(token) {
   try {
-    return jwt.verify(token, JWT_SECRET);  // INSECURE: does not enforce algorithms strictly
+    return jwt.verify(token, JWT_SECRET);  // does not enforce algorithms strictly (algorithm confusion attack) 
   } catch (e) {
     return null;
   }
@@ -122,7 +165,22 @@ function requireAdmin(req, res, next) {
   next();
 }
 
-// --- Auth endpoints ---
+
+/**                                  
+ *                          API endpoints 
+ * 
+ * 
+ * 
+ *   [Account Creation]
+ * 
+ *   POST /api/register 
+ *   POST /api/login
+ *   
+*/
+
+
+
+
 app.post('/api/register', (req, res) => {
   const { username, password, email } = req.body;
   if (!username || !password) return res.status(400).json({ error: 'Missing' });
@@ -158,6 +216,17 @@ app.post('/api/login', (req, res) => {
   });
 });
 
+
+/**
+ * 
+ * [User Account]
+ * 
+ * GET      /api/users
+ * POST     /api/users/:id
+ * PUT      /api/users/:id
+ * DELETE   /api/users/:id
+ * 
+ */
 
 
 // CRUD
@@ -218,40 +287,75 @@ app.delete('/api/users/:id', requireAuth, (req, res) => {
   }
 });
 
-// --- Tours ---
+
+
+
+/**
+ * 
+ * [Tours]
+ * 
+ * GET      /api/tours
+ * POST     /api/tours
+ * PUT      /api/tours/:id
+ * DELETE   /api/tours/:id
+ * 
+ * 
+ * POST     /api/tours/:id/join
+ * GET      /api/tours/joined
+ * POST     /api/tours/:id/notify-creator
+ * 
+ * 
+ * 
+ */
+
+
 app.get('/api/tours', requireAuth, (req, res) => {
-  const page = Math.max(1, parseInt(req.query.page)) || 1;
-  const limit = Math.min(100, parseInt(req.query.limit)) || 10;
-  const offset = (page - 1) * limit;
+  try {
+    const tours = db.prepare(`
+      SELECT t.*, u.username AS ownerUsername
+      FROM tours t
+      JOIN users u ON t.ownerId = u.id
+    `).all();
 
-  const tours = db.prepare('SELECT * FROM tours LIMIT ? OFFSET ?').all(limit, offset);
-  const total = db.prepare('SELECT COUNT(*) as count FROM tours').get().count;
+    res.json(tours);
 
-  res.json({
-    total,
-    page,
-    totalPages: Math.ceil(total / limit),
-    tours
-  });
+  } catch (err) {
+    console.error("Error loading tours:", err);
+    res.status(500).json({ error: "Failed to load tours" });
+  }
 });
 
 app.post('/api/tours', requireAuth, (req, res) => {
   const id = 't' + makeId(6);
   const ownerId = req.user && req.user.id;
-  const title = req.body.title;
-  const price = req.body.price || 0;
+  const { title, price = 0, location = 'Unknown', duration = 0, description = '' } = req.body;
   const groupId = 'g' + makeId(6);
-  
-  db.prepare('INSERT INTO groups (id, name, destination) VALUES (?, ?, ?)').run(groupId, title, null);
-  db.prepare('INSERT INTO tours (id, title, price, ownerId, groupId) VALUES (?, ?, ?, ?, ?)').run(id, title, price, ownerId, groupId);
 
-  const tour = db.prepare('SELECT * FROM tours WHERE id = ?').get(id);
-  res.json(tour);
+  try {
+    // Create group
+    db.prepare('INSERT INTO groups (id, name, destination) VALUES (?, ?, ?)').run(groupId, title, location);
+    
+    // Create tour
+    db.prepare(`INSERT INTO tours 
+      (id, title, price, ownerId, groupId, location, duration, description) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(id, title, price, ownerId, groupId, location, duration, description);
+
+    // auto join (did not worked tho)
+    //db.prepare('INSERT INTO group_members (groupId, userId) VALUES (?, ?)').run(groupId, ownerId);
+
+    const tour = db.prepare('SELECT * FROM tours WHERE id = ?').get(id);
+    res.json(tour);
+
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 
 
-app.put('/api/tours/:id', requireAuth, (req, res) => {
+
+app.put('tours/:id', requireAuth, (req, res) => {
   const tour = db.prepare('SELECT * FROM tours WHERE id = ?').get(req.params.id);
   if (!tour) return res.status(404).json({ error: 'no' });
 
@@ -268,11 +372,28 @@ app.put('/api/tours/:id', requireAuth, (req, res) => {
 });
 
 app.delete('/api/tours/:id', requireAuth, (req, res) => {
-  const tour = db.prepare('SELECT * FROM tours WHERE id = ?').get(req.params.id);
-  if (!tour) return res.status(404).json({ error: 'no' });
-  if (tour.ownerId !== req.user.id) return res.status(403).json({ error: 'not owner' });
-  db.prepare('DELETE FROM tours WHERE id = ?').run(tour.id);
-  res.json({ success: true });
+  try {
+    const tour = db.prepare('SELECT * FROM tours WHERE id = ?').get(req.params.id);
+    if (!tour) return res.status(404).json({ error: 'Tour not found' });
+    if (tour.ownerId !== req.user.id) return res.status(403).json({ error: 'Not owner' });
+
+    // Delete related tour joins first
+    db.prepare('DELETE FROM tour_joins WHERE tourId = ?').run(tour.id);
+
+    if (tour.groupId) {
+      db.prepare('DELETE FROM group_members WHERE groupId = ?').run(tour.groupId);
+      db.prepare('DELETE FROM groups WHERE id = ?').run(tour.groupId);
+    }
+
+    // Delete the tour itself
+    db.prepare('DELETE FROM tours WHERE id = ?').run(tour.id);
+
+    res.json({ success: true });
+
+  } catch (e) {
+    console.error('Error deleting tour:', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 
@@ -284,14 +405,36 @@ app.post('/api/tours/:id/join', requireAuth, (req, res) => {
   if (!tour) return res.status(404).json({ error: 'Tour not found' });
 
   try {
+    // Check if already joined
+    const existing = db.prepare('SELECT 1 FROM tour_joins WHERE tourId = ? AND userId = ?').get(tourId, userId);
+    if (existing) {
+      return res.json({ success: true, message: 'Already joined' });
+    }
+
     db.prepare('INSERT INTO tour_joins (tourId, userId) VALUES (?, ?)').run(tourId, userId);
+
     if (tour.groupId) {
       db.prepare('INSERT OR IGNORE INTO group_members (groupId, userId) VALUES (?, ?)').run(tour.groupId, userId);
     }
+
     res.json({ success: true, tourId });
   } catch (e) {
     res.status(400).json({ error: e.message });
   }
+});
+
+
+
+app.get('/api/tours/joined', requireAuth, (req, res) => {
+  const userId = req.user.id;
+  const joinedTours = db.prepare(`
+    SELECT t.*
+    FROM tours t
+    JOIN tour_joins tj ON t.id = tj.tourId
+    WHERE tj.userId = ?
+  `).all(userId);
+
+  res.json(joinedTours);
 });
 
 
@@ -301,45 +444,22 @@ app.post('/api/tours/:id/notify-creator', requireAuth, (req, res) => {
   const tour = db.prepare('SELECT * FROM tours WHERE id = ?').get(tourId);
   if (!tour) return res.status(404).json({ error: 'Tour not found' });
 
-  // Simulated: you may log or create a notification
   console.log(`[Notify] User ${req.user.username} joined tour ${tour.title}. Notify owner: ${tour.ownerId}`);
 
   res.json({ ok: true, notified: tour.ownerId });
 });
 
 
+/**
+ * 
+ * [Admin Config]
+ * 
+ * leads to RCE [abuse eval()]
+ * 
+ * POST     /api/admin/query
+ * 
+ */
 
-// bookings (business logic flaws)
-/*app.post('/api/bookings', requireAuth, (req, res) => {
-  const tour = db.prepare('SELECT * FROM tours WHERE id = ?').get(req.body.tourId);
-  if (!tour) return res.status(404).json({ error: 'tour missing' });
-
-  // BUSINESS FLAW: pricePaid is taken from request body if provided
-  const id = 'b' + makeId(6);
-  const pricePaid = req.body.pricePaid || tour.price;
-  const userId = req.user.id;
-  db.prepare('INSERT INTO bookings (id, tourId, userId, pricePaid, status) VALUES (?, ?, ?, ?, ?)').run(id, tour.id, userId, pricePaid, 'confirmed');
-  const booking = db.prepare('SELECT * FROM bookings WHERE id = ?').get(id);
-  res.json(booking);
-});
-
-app.get('/api/bookings/:id', requireAuth, (req, res) => {
-  const b = db.prepare('SELECT * FROM bookings WHERE id = ?').get(req.params.id);
-  if (!b) return res.status(404).json({ error: 'none' });
-  res.json(b);
-});
-
-app.put('/api/bookings/:id/refund', requireAuth, (req, res) => {
-  const b = db.prepare('SELECT * FROM bookings WHERE id = ?').get(req.params.id);
-  if (!b) return res.status(404).json({ error: 'no' });
-
-  if (b.status === 'refunded') return res.json({ success: false, msg: 'already refunded' });
-  db.prepare('UPDATE bookings SET status = ? WHERE id = ?').run('refunded', b.id);
-  const updated = db.prepare('SELECT * FROM bookings WHERE id = ?').get(b.id);
-  res.json({ success: true, refundedBooking: updated });
-});*/
-
-// --- Admin insecure deserialization endpoint ---
 app.post('/api/admin/query', requireAuth, requireAdmin, (req, res) => {
   const q = req.body.q;
   try {
@@ -350,23 +470,24 @@ app.post('/api/admin/query', requireAuth, requireAdmin, (req, res) => {
   }
 });
 
-// --- Token demo ---
-app.get('/api/token-demo', (req, res) => {
-  const token = signToken({ id: 'u2', username: 'bob', role: 'admin' });
-  res.json({ token });
-});
 
-// to do
-// open redirect
-app.get('/oauth/authorize', (req, res) => {
-  const redirect = req.query.redirect_uri || '/';
-  // INTENTIONALLY: naive allow-list check (matches substring) leading to open redirect bypass
-  const whitelist = ['http://127.0.0.1:5000', 'https://127.0.0.1:5000','http://localhost:5000']; // update accordingly
-  const ok = whitelist.find(w => redirect.startsWith(w));
-  if (!ok) return res.status(400).send('invalid redirect');
-  // In real flow we'd generate code; here we redirect with a fake code
-  res.redirect(302, redirect + '?code=426c40690e028415861dbd34d97b1629');
-});
+
+/**
+ * [Friend]
+ * 
+ * 
+ * GET        /api/friend
+ * POST       /api/friend
+ * DELETE     /api/friend/:username
+ * 
+ * GET        /api/friend/request
+ * POST       /api/friend/request
+ * 
+ * POST       /api/friend/request/:id/accept
+ * POST       /api/friend/request/:id/reject
+ * 
+ * 
+ */
 
 
 // GET friends list
@@ -491,6 +612,22 @@ app.post('/api/friend/request/:id/reject', requireAuth, (req, res) => {
 });
 
 
+/**
+ * 
+ * [Groups]
+ * 
+ * GET        /api/groups
+ * POST       /api/groups/join
+ * 
+ * 
+ * POST       /api/groups/leave
+ * 
+ * GET        /api/groups/:id/members
+ * 
+ * 
+ */
+
+
 // GET all groups
 app.get('/api/groups', requireAuth, (req, res) => {
   const groups = db.prepare('SELECT * FROM groups').all();
@@ -511,11 +648,34 @@ app.post('/api/groups/join', requireAuth, (req, res) => {
   }
 });
 
+// list groups the user belongs to
+app.get('/api/groups/joined', requireAuth, (req, res) => {
+  const groups = db.prepare(
+    `SELECT g.* FROM groups g
+     JOIN group_members gm ON g.id = gm.groupId
+     WHERE gm.userId = ?`
+  ).all(req.user.id);
+  res.json({ groups });
+});
+
 // leave
 app.post('/api/groups/leave', requireAuth, (req, res) => {
   const groupId = req.body.groupId;
-  db.prepare('DELETE FROM group_members WHERE groupId = ? AND userId = ?').run(groupId, req.user.id);
-  res.json({ success: true });
+  const userId = req.user.id;
+
+  try {
+    const tour = db.prepare('SELECT * FROM tours WHERE groupId = ?').get(groupId);
+    if (!tour) return res.status(404).json({ error: 'Group not linked to a tour' });
+
+    db.prepare('DELETE FROM group_members WHERE groupId = ? AND userId = ?').run(groupId, userId);
+
+    db.prepare('DELETE FROM tour_joins WHERE tourId = ? AND userId = ?').run(tour.id, userId);
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error leaving group:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 // get group mem
@@ -538,124 +698,31 @@ app.get('/api/groups/:id/members', requireAuth, (req, res) => {
 });
 
 
-// cretae 1:1 chat
-function getOrCreatePrivateChatGroup(userId1, userId2) {
-  // Search for existing group with exactly these two members
-  const group = db.prepare(`
-    SELECT g.*
-    FROM groups g
-    JOIN group_members gm1 ON gm1.groupId = g.id AND gm1.userId = ?
-    JOIN group_members gm2 ON gm2.groupId = g.id AND gm2.userId = ?
-    GROUP BY g.id
-    HAVING COUNT(*) = 2
-  `).get(userId1, userId2);
-
-  if (group) return group;
-
-  // Create new private group for the two
-  const id = 'g' + makeId(6);
-  const name = `Chat_${userId1}_${userId2}`;
-  db.prepare('INSERT INTO groups (id, name, destination) VALUES (?, ?, ?)').run(id, name, null);
-  db.prepare('INSERT INTO group_members (groupId, userId) VALUES (?, ?)').run(id, userId1);
-  db.prepare('INSERT INTO group_members (groupId, userId) VALUES (?, ?)').run(id, userId2);
-
-  return db.prepare('SELECT * FROM groups WHERE id = ?').get(id);
-}
-
-
-
+/**
+ * 
+ * [Chat]
+ * 
+ * POST   /api/chat
+ * GET    /api/chat/:id
+ * 
+ */
 
 // chat
 app.post('/api/chat', requireAuth, (req, res) => {
-  const { groupId, text } = req.body;
-  if (!groupId || !text) return res.status(400).json({ error: 'Missing groupId or text' });
+  const { groupId, message } = req.body;
 
-  // check membership
-  const member = db.prepare('SELECT * FROM group_members WHERE groupId = ? AND userId = ?').get(groupId, req.user.id);
-  if (!member) return res.status(403).json({ error: 'Not a member of group' });
-
-  const id = 'c' + makeId(6);
-  db.prepare('INSERT INTO chat_messages (id, groupId, userId, message, timestamp) VALUES (?, ?, ?, ?, ?)').run(
-    id, groupId, req.user.id, text, Date.now()
-  );
-  res.json({ success: true, id });
-});
-
-
-// get msgs for group
-app.get('/api/chat/:id', requireAuth, (req, res) => {
-  const groupId = req.params.id;
-
-  // Check if user is a member
-  const isMember = db.prepare('SELECT 1 FROM group_members WHERE groupId = ? AND userId = ?')
-    .get(groupId, req.user.id);
-  if (!isMember) return res.status(403).json({ error: 'Not a member of this group' });
-
-  const messages = db.prepare(`
-    SELECT c.id, c.userId, u.username, c.message, c.timestamp
-    FROM chat_messages c
-    JOIN users u ON c.userId = u.id
-    WHERE c.groupId = ?
-    ORDER BY c.timestamp ASC
-  `).all(groupId);
-
-  res.json(messages);
-});
-
-
-// send msgs
-app.get('/api/chat/:id', requireAuth, (req, res) => {
-  const groupId = req.params.id;
-
-  const isMember = db.prepare('SELECT 1 FROM group_members WHERE groupId = ? AND userId = ?')
-    .get(groupId, req.user.id);
-  if (!isMember) return res.status(403).json({ error: 'Not a member of this group' });
-
-  const messages = db.prepare(`
-    SELECT c.id, c.userId, u.username, c.message, c.timestamp
-    FROM chat_messages c
-    JOIN users u ON c.userId = u.id
-    WHERE c.groupId = ?
-    ORDER BY c.timestamp ASC
-  `).all(groupId);
-
-  res.json(messages);
-});
-
-
-
-// send message - supports group or friend chats by groupId or friendUsername
-app.post('/api/chat/send', requireAuth, (req, res) => {
-  const { groupId, message, friendUsername } = req.body;
-  if (!message) return res.status(400).json({ error: 'Message cannot be empty' });
-
-  let targetGroupId = groupId;
-
-  if (!targetGroupId && friendUsername) {
-    // Send direct message to friend via private chat group
-    const friend = db.prepare('SELECT id FROM users WHERE username = ?').get(friendUsername);
-    if (!friend) return res.status(404).json({ error: 'Friend not found' });
-
-    // Check friendship
-    const isFriend = db.prepare('SELECT 1 FROM friends WHERE userId = ? AND friendId = ?').get(req.user.id, friend.id);
-    if (!isFriend) return res.status(403).json({ error: 'Not friends' });
-
-    const group = getOrCreatePrivateChatGroup(req.user.id, friend.id);
-    targetGroupId = group.id;
+  if (!groupId || !message) {
+    return res.status(400).json({ error: 'groupId and message are required' });
   }
 
-  if (!targetGroupId) return res.status(400).json({ error: 'No target group or friend specified' });
-
-  // Check membership
-  const isMember = db.prepare('SELECT 1 FROM group_members WHERE groupId = ? AND userId = ?')
-    .get(targetGroupId, req.user.id);
+  const isMember = db.prepare('SELECT 1 FROM group_members WHERE groupId = ? AND userId = ?').get(groupId, req.user.id);
   if (!isMember) return res.status(403).json({ error: 'Not a member of this group' });
 
   const id = 'c' + makeId(6);
   const timestamp = Date.now();
 
   db.prepare('INSERT INTO chat_messages (id, groupId, userId, message, timestamp) VALUES (?, ?, ?, ?, ?)')
-    .run(id, targetGroupId, req.user.id, message, timestamp);
+    .run(id, groupId, req.user.id, message, timestamp);
 
   const msg = db.prepare(`
     SELECT c.id, c.userId, u.username, c.message, c.timestamp
@@ -669,7 +736,53 @@ app.post('/api/chat/send', requireAuth, (req, res) => {
 
 
 
-// check auths 
+// get msgs for group
+app.get('/api/chat/:id', requireAuth, (req, res) => {
+  const groupId = req.params.id;
+
+  // check if user is a member
+  const isMember = db.prepare('SELECT 1 FROM group_members WHERE groupId = ? AND userId = ?')
+    .get(groupId, req.user.id);
+  if (!isMember) return res.status(403).json({ error: 'Not a member of this group' });
+
+  const messages = db.prepare(`
+    SELECT c.id, c.userId, u.username, c.message, c.timestamp
+    FROM chat_messages c
+    JOIN users u ON c.userId = u.id
+    WHERE c.groupId = ?
+    ORDER BY c.timestamp ASC
+  `).all(groupId);
+
+  res.json(messages);
+});
+
+
+/**
+ * [TO DO]
+ * 
+ * - open redirect  (oauth implemetation flaw)
+ * - 
+ * 
+ */
+
+// open redirect
+app.get('/oauth/authorize', (req, res) => {
+  const redirect = req.query.redirect_uri || '/';
+  // INTENTIONALLY: naive allow-list check (matches substring) leading to open redirect bypass
+  const whitelist = ['http://127.0.0.1:5000', 'https://127.0.0.1:5000','http://localhost:5000']; // update accordingly
+  const ok = whitelist.find(w => redirect.startsWith(w));
+  if (!ok) return res.status(400).send('invalid redirect');
+  // In real flow we'd generate code; here we redirect with a fake code
+  res.redirect(302, redirect + '?code=426c40690e028415861dbd34d97b1629');
+});
+
+
+
+
+/**
+ *  Authenticates
+ */
+
 app.get('/api/me', requireAuth, (req, res) => {
   res.json({
     id: req.user.id,
@@ -679,12 +792,12 @@ app.get('/api/me', requireAuth, (req, res) => {
 });
 
 
-
 // check up
 app.get('/api/health', (req, res) => res.json({ ok: true, env: process.env.NODE_ENV }));
 
 
-// main()
+// 0.0.0.0:PORT
 app.listen(PORT, () => {
   console.log('VulnTour API Server running on', PORT);
 });
+

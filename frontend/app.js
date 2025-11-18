@@ -1,3 +1,7 @@
+/**
+ * app.js
+ * 
+ */
 
 const API_BASE = 'http://localhost:5000';
 
@@ -13,18 +17,20 @@ function toast(msg){
   setTimeout(()=> t.classList.remove('show'), 2000);
 }
 
+// localstorage
 function token(){ return localStorage.getItem('token'); }
 function saveToken(t){ if(t) localStorage.setItem('token', t); else localStorage.removeItem('token'); }
+
 function parseJWT(t){ try { return JSON.parse(atob(t.split('.')[1])); } catch { return {}; } }
 
 // Robust API
 async function api(path, opts = {}){
   opts.headers = opts.headers || {};
 
-  if(token()) opts.headers['Authorization'] = 'Bearer ' + token();
+  if(token()) opts.headers['Authorization'] = 'Bearer ' + token();  // Authorization: Bearer ey...
 
   if(opts.body && typeof opts.body !== 'string'){
-    opts.headers['Content-Type'] = 'application/json';
+    opts.headers['Content-Type'] = 'application/json';  // Content-Type: application/json
     opts.body = JSON.stringify(opts.body);
   }
 
@@ -65,6 +71,40 @@ document.querySelectorAll('.tab').forEach(tab => {
   });
 });
 
+
+// ==========================
+// ADMIN PANEL
+// ==========================
+function updateAdminPanelVisibility(){
+  const panel = $('admin_panel');
+  const navBtn = $('nav_admin_btn');
+  const data = parseJWT(token() || '');
+  if(data.role === 'admin') {
+    panel.classList.remove('hidden');
+    navBtn.classList.remove('hidden');
+  } else {
+    panel.classList.add('hidden');
+    navBtn.classList.add('hidden');
+  }
+}
+
+const btnAdminQuery = $('btn_admin_query');
+if(btnAdminQuery){
+  btnAdminQuery.addEventListener('click', async ()=>{
+    const q = $('admin_query').value;
+    if(!q) return toast('Query required');
+
+    const r = await api('/api/admin/query', {
+      method:'POST',
+      body:{ q }
+    });
+
+    $('admin_response').textContent =
+      typeof r.body === 'string' ? r.body : JSON.stringify(r.body,null,2);
+  });
+}
+
+
 // ==========================
 // Dashboard Init
 // ==========================
@@ -75,20 +115,41 @@ async function ensureRole(){
   if(r.status === 200 && r.body) userRole = r.body.role || null;
 }
 
-async function initDashboard(){
+
+function updateUserDisplay(username) {
+  const el = document.getElementById('user_display');
+  if (el) {
+    el.textContent = `Hello ${username}!`;
+  }
+}
+
+async function initDashboard() {
   hide('auth_view');
   show('dashboard_view');
 
   await ensureRole();
   updateAdminPanelVisibility();
-  const bt = $('btn_logout'); if(bt) bt.style.display = 'inline-block';
+  const bt = $('btn_logout'); if (bt) bt.style.display = 'inline-block';
+
+  const me = await api('/api/me');
+  if (me.status === 200 && me.body?.username) {
+    updateUserDisplay(me.body.username);
+  }
 
   await loadTours();
   await loadFriends();
   await loadFriendRequests();
   await loadJoinedTours();
   await loadChatGroups();
+
+  const firstGroupChatBtn = document.querySelector('#group_chat_list button.btn-chat-group')
+    if (firstGroupChatBtn) {
+        startChatPolling(firstGroupChatBtn.dataset.groupid);
+        show('group_panel');
+    }
 }
+
+
 
 // ==========================
 // Load View on Refresh
@@ -122,6 +183,7 @@ window.addEventListener('load', async () => {
 // ==========================
 // AUTH — Register / Login / Forgot
 // ==========================
+
 const btnRegister = $('btn_register');
 if(btnRegister){
   btnRegister.addEventListener('click', async ()=>{
@@ -173,16 +235,16 @@ if (btnForgot) {
     const username = $('login_username').value.trim();
     if (!username) return toast('Enter username first');
 
-    const fake = btoa(username + ':' + Math.random().toString(36).substring(2));
-    console.log(`Password reset link: ${API_BASE}/api/reset/${fake}`);
+    // to do
+    const reset_token = btoa(username + ':' + Math.random().toString(36).substring(2));
+    console.log(`Password reset link: ${API_BASE}/api/reset/${reset_token}`);
 
     toast('Reset link (demo) printed in console');
   });
 }
 
-// ==========================
+
 // Logout
-// ==========================
 const btnLogoutTop = $('btn_logout');
 if(btnLogoutTop){
   btnLogoutTop.addEventListener('click', ()=>{
@@ -194,39 +256,64 @@ if(btnLogoutTop){
   });
 }
 
-// ==========================
+
 // Notify Creator (Join Tour)
-// ==========================
 async function notifyCreator(tourId){
   await api(`/api/tours/${tourId}/notify-creator`, { method:'POST' });
 }
 
-// ==========================
+
+
 // TOURS
-// ==========================
-async function loadTours(){
+
+// t.location || 'Unknown' --> t.location ?? 'Unknown'
+async function loadTours() {
   const r = await api('/api/tours');
   const list = $('tour_list');
-  if(!list) return;
+  if (!list) return;
 
+  const currentUserId = parseJWT(token()).id;
   list.innerHTML = '';
 
-  if(Array.isArray(r.body) && r.body.length){
-    r.body.forEach(t=>{
+  const tours = r.body;
+
+  if (Array.isArray(tours) && tours.length) {
+    tours.forEach(t => {
+      const isOwner = t.ownerId === currentUserId;
+
       const d = document.createElement('div');
       d.className = 'tour-card';
+
+      //console.log(t.duration);
+      //console.log(t.location);
+      //console.log(t.description);
+
       d.innerHTML = `
-        <div class="tour-head">
-          <h4>${escapeHtml(t.title)}</h4>
-          <div class="meta">${escapeHtml(t.location || 'Unknown')} • ${t.duration || '?'} days • ₹${t.price}</div>
+        <div class="tour-head" style="display: flex; justify-content: space-between; align-items: center;">
+          <h4 style="margin: 0;">${escapeHtml(t.title)}</h4>
+          <span style="font-size: 0.9em; color: #666;">by ${escapeHtml(t.ownerUsername || 'Unknown')}</span>
         </div>
-        <p class="desc">${escapeHtml(t.description || 'No description provided.')}</p>
-        <div class="card-actions">
-          <button class="btn small btn-join-tour" data-id="${t.id}">Join</button>
-          <button class="btn small ghost btn-edit-tour" data-id="${t.id}">Edit</button>
-          <button class="btn small danger btn-delete-tour" data-id="${t.id}">Delete</button>
+
+        <div class="meta" style="margin-top: 4px; color: #555; font-size: 0.9em;">
+          <span><strong>Location:</strong> ${escapeHtml(t.location || 'Unknown')}</span> •
+          <span><strong>Duration:</strong> ${typeof t.duration === 'number' ? t.duration : '?'} days</span> •
+          <span><strong>Price:</strong> $${Number(t.price || 0).toFixed(2)}</span>
+        </div>
+
+        <p class="desc" style="margin-top: 8px; color: #444;">
+          ${escapeHtml(t.description || 'No description provided.')}
+        </p>
+
+        <div class="card-actions" style="margin-top: 12px; display: flex; gap: 10px;">
+          <button class="btn small btn-join-tour" data-id="${escapeHtml(t.id)}">Join</button>
+
+          ${isOwner ? `
+            <button class="btn small ghost btn-edit-tour" data-id="${escapeHtml(t.id)}">Edit</button>
+            <button class="btn small danger btn-delete-tour" data-id="${escapeHtml(t.id)}">Delete</button>
+          ` : ''}
         </div>
       `;
+
       list.appendChild(d);
     });
   } else {
@@ -237,16 +324,26 @@ async function loadTours(){
 const btnCreateTour = $('btn_create_tour');
 if (btnCreateTour) {
   btnCreateTour.addEventListener('click', async () => {
-    btnCreateTour.disabled = true;  // disable button
-    
+    btnCreateTour.disabled = true;
+
     const title = $('tour_title').value.trim();
-    const location = $('tour_location').value.trim();
-    const price = Number($('tour_price').value) || 0;
-    const duration = Number($('tour_duration').value) || 0;
-    const description = $('tour_description').value.trim();
+    const location = $('tour_location').value.trim() || 'Unknown';
+    const price = Number($('tour_price').value);
+    const duration = Number($('tour_duration').value);
+    const description = $('tour_description').value.trim() || '';
 
     if (!title) {
       toast('Title required');
+      btnCreateTour.disabled = false;
+      return;
+    }
+    if (isNaN(price) || price < 0) {
+      toast('Price must be a non-negative number');
+      btnCreateTour.disabled = false;
+      return;
+    }
+    if (isNaN(duration) || duration < 0) {
+      toast('Duration must be a non-negative number');
       btnCreateTour.disabled = false;
       return;
     }
@@ -256,23 +353,33 @@ if (btnCreateTour) {
       body: { title, location, price, duration, description }
     });
 
-    if (r.status === 200) {
-      toast('Created!');
-      // Clear inputs
+    if (r.status === 200 && r.body?.id) {
+      toast('Created! Joining tour...');
+      // auto join
+      const joinRes = await api(`/api/tours/${r.body.id}/join`, { method: 'POST' });
+      if (joinRes.status === 200) {
+        toast('Joined tour');
+      } else {
+        toast('Failed to join tour: ' + (joinRes.body?.error || joinRes.body));
+      }
+
+      // Clear inputs and refresh joined tours list
       $('tour_title').value = '';
       $('tour_location').value = '';
       $('tour_price').value = '';
       $('tour_duration').value = '';
       $('tour_description').value = '';
-      loadTours();
+      await loadTours();
+      await loadJoinedTours(); // To update the joined tours UI as well
     } else {
       toast('Create failed: ' + (r.body?.error || r.body));
     }
-    btnCreateTour.disabled = false;  // re-enable button
+    btnCreateTour.disabled = false;
   });
 }
 
-// Tour list actions
+
+// Tour list actions  (join, edit, delete)
 const tourList = $('tour_list');
 if(tourList){
   tourList.addEventListener('click', async (e)=>{
@@ -309,9 +416,8 @@ if(tourList){
   });
 }
 
-// ==========================
+
 // FRIENDS
-// ==========================
 const btnSearchFriend = $('btn_search_friend');
 if(btnSearchFriend){
   btnSearchFriend.addEventListener('click', async ()=>{
@@ -429,28 +535,11 @@ async function loadFriendRequests() {
   }
 }
 
-async function loadChatGroups() {
-  const r = await api('/api/friend');
-  const chatList = $('friend_chat_list');
-  if (!chatList) return;
 
-  chatList.innerHTML = '';
-  const friends = r.body?.friends || [];
-  friends.forEach(friend => {
-    const li = document.createElement('li');
-    li.textContent = friend.username;
-    li.dataset.userid = friend.id;
-    li.addEventListener('click', () => {
-      openFriendChat(friend.id);
-    });
-    chatList.appendChild(li);
-  });
 
-  if (friends.length === 0) {
-    chatList.innerHTML = '<li class="muted">No friends yet</li>';
-  }
+async function loadChatGroups(){
+  await loadGroupChats();
 }
-
 
 
 
@@ -479,60 +568,88 @@ if(btnJoinGroup){
 }
 
 const btnLeaveGroup = $('btn_leave_group');
-if(btnLeaveGroup){
-  btnLeaveGroup.addEventListener('click', async ()=>{
+if (btnLeaveGroup) {
+  btnLeaveGroup.addEventListener('click', async () => {
     const groupId = $('group_tour_id').value.trim();
-    if(!groupId) return toast('Enter group ID');
+    if (!groupId) {
+      return toast('Enter group ID');
+    }
 
     const r = await api('/api/groups/leave', {
-      method:'POST',
-      body:{ groupId }
+      method: 'POST',
+      body: { groupId }
     });
 
-    if(r.status === 200){
+    if (r.status === 200) {
       toast('Left group');
+      await loadJoinedTours();
       stopChatPolling();
       $('group_members').textContent = '';
       $('chat_messages').innerHTML = '';
-    } else toast('Leave failed');
+    } else {
+      toast('Leave failed');
+    }
   });
 }
 
-async function loadGroupMembers(groupId){
+async function loadGroupChats() {
+  const r = await api('/api/groups/joined'); // /api/groups --> /api/groups/joined
+  const groupList = $('group_chat_list');
+  if (!groupList) return;
+
+  groupList.innerHTML = '';
+  const groups = r.body?.groups || [];
+
+  if (groups.length === 0) {
+    groupList.innerHTML = '<li class="muted">No groups joined</li>';
+    return;
+  }
+
+  groups.forEach(group => {
+    const li = document.createElement('li');
+    li.innerHTML = `
+      ${escapeHtml(group.name)}
+      <button class="btn small btn-chat-group" data-groupid="${escapeHtml(group.id)}" style="margin-left:8px;">Chat</button>
+    `;
+    groupList.appendChild(li);
+  });
+
+  groupList.querySelectorAll('button.btn-chat-group').forEach(btn => {
+    btn.addEventListener('click', () => {
+      startChatPolling(btn.dataset.groupid);
+      show('chat_panel');
+    });
+  });
+}
+
+
+async function loadGroupMembers(groupId) {
   const r = await api(`/api/groups/${encodeURIComponent(groupId)}/members`);
-  $('group_members').textContent =
-    Array.isArray(r.body) && r.body.length
-      ? 'Members: ' + r.body.map(x=>x.username).join(', ')
-      : 'No members';
+  const membersDiv = $('group_members');
+  if (!membersDiv) return;
+
+  if (Array.isArray(r.body) && r.body.length) {
+    membersDiv.innerHTML = `
+      <b>Members:</b> ${r.body.map(m => escapeHtml(m.username)).join(', ')}
+    `;
+  } else {
+    membersDiv.textContent = 'No members in this group';
+  }
 }
 
 let chatInterval = null;
 let activeChatTourId = null;
 
-function startChatPolling(id){
-  stopChatPolling();
-  activeChatTourId = id;
-  $('chat_box').classList.remove('hidden');
-  loadGroupMembers(id);
-  fetchChat(id);
-  chatInterval = setInterval(()=>fetchChat(id), 2500);
-}
 
-function stopChatPolling(){
-  if(chatInterval) clearInterval(chatInterval);
-  chatInterval = null;
-  activeChatTourId = null;
-  $('chat_box').classList.add('hidden');
-}
-
-async function fetchChat(id){
-  const r = await api('/api/chat/'+encodeURIComponent(id));
+async function fetchChat(id) {
+  const r = await api('/api/chat/' + encodeURIComponent(id));
   const box = $('chat_messages');
+  if (!box) return;
 
   box.innerHTML = '';
 
-  if(Array.isArray(r.body) && r.body.length){
-    r.body.forEach(m=>{
+  if (Array.isArray(r.body) && r.body.length) {
+    r.body.forEach(m => {
       const d = document.createElement('div');
       d.className = 'chat-msg';
       d.innerHTML = `<b>${escapeHtml(m.username)}:</b> ${escapeHtml(m.message)}`;
@@ -544,93 +661,107 @@ async function fetchChat(id){
   }
 }
 
+
+function stopChatPolling() {
+  if (chatInterval) clearInterval(chatInterval);
+  chatInterval = null;
+  activeChatTourId = null;
+}
+
+
+function startChatPolling(id) {
+  stopChatPolling();
+  activeChatTourId = id;
+  show('group_panel');
+  loadGroupMembers(id);
+  fetchChat(id);
+  chatInterval = setInterval(() => fetchChat(id), 2500);
+}
+
+
 const btnSendChat = $('btn_send_chat');
-if(btnSendChat){
-  btnSendChat.addEventListener('click', async ()=>{
+if (btnSendChat) {
+  btnSendChat.addEventListener('click', async () => {
     const id = activeChatTourId || $('group_tour_id').value.trim();
     const text = $('chat_input').value.trim();
 
-    if(!id) return toast('Join a group first');
-    if(!text) return;
+    if (!id) return toast('Join a group first');
+    if (!text) return;
 
-    const r = await api('/api/chat/'+encodeURIComponent(id), {
-      method:'POST',
-      body:{ message: text }
+    const r = await api('/api/chat', {
+      method: 'POST',
+      body: { groupId: id, message: text }
     });
 
-    if(r.status === 200){
-      $('chat_input').value = '';
-      fetchChat(id);
+    if (r.status === 200) {
+      $('chat_input').value = '';  // clear input
+      await fetchChat(id);         // refresh chat messages immediately
+    } else {
+      toast('Send failed: ' + (r.body?.error || r.body));
     }
   });
 }
 
 
 async function loadJoinedTours() {
-  // Fetch tours the user has joined
-  const r = await api('/api/tours'); // Modify or create endpoint to fetch only joined tours or include join info
+  const r = await api('/api/tours/joined');
   const joinedList = $('joined_tours');
   if (!joinedList) return;
 
-  // Clear current list
   joinedList.innerHTML = '';
 
   if (Array.isArray(r.body) && r.body.length) {
-    for (const tour of r.body) {
-      // Check if user is a member (if API returns extra data), else fetch user's joined tours separately
-      if (!tour.groupId) continue;
+    r.body.forEach(tour => {
+      if (!tour.groupId) return; // skip if no group assigned
 
       const li = document.createElement('li');
       li.innerHTML = `
-        ${escapeHtml(tour.title)}
-        <button class="btn small btn-chat" data-groupid="${escapeHtml(tour.groupId)}">Chat</button>
+        <span style="font-weight: 600;">${escapeHtml(tour.title)}</span>
+        <button class="btn small btn-chat" data-groupid="${escapeHtml(tour.groupId)}" style="margin-left: 8px;">Chat</button>
+        <button class="btn small btn-leave-group danger" data-groupid="${escapeHtml(tour.groupId)}" style="margin-left: 8px;">Leave</button>
+        <div style="font-size: 0.85em; color: #666; margin-top: 4px;">
+          Location: ${escapeHtml(tour.location || 'Unknown')} |
+          Duration: ${tour.duration || '?'} days |
+          Price: ₹${tour.price || 0}
+        </div>
       `;
       joinedList.appendChild(li);
-    }
+    });
 
-    // Add event listeners for chat buttons
     joinedList.querySelectorAll('button.btn-chat').forEach(btn => {
       btn.addEventListener('click', e => {
         const groupId = e.target.dataset.groupid;
         startChatPolling(groupId);
-        show('chat_panel'); //showPanel
+        show('group_panel');   // Show the groups panel with chat UI
       });
     });
+
+    joinedList.querySelectorAll('button.btn-leave-group').forEach(btn => {
+      btn.addEventListener('click', async e => {
+        const groupId = e.target.dataset.groupid;
+        if (!confirm('Leave this group?')) return;
+
+        const r = await api('/api/groups/leave', {
+          method: 'POST',
+          body: { groupId }
+        });
+
+        if (r.status === 200) {
+          toast('Left group');
+          await loadJoinedTours();
+          // If currently chatting in this group, stop polling
+          if (activeChatTourId === groupId) {
+            stopChatPolling();
+            $('group_members').textContent = '';
+            $('chat_messages').innerHTML = '';
+          }
+        } else {
+          toast('Failed to leave group');
+        }
+      });
+    });
+
   } else {
     joinedList.innerHTML = '<li class="muted">You have not joined any tours/groups</li>';
   }
-}
-
-
-
-// ==========================
-// ADMIN PANEL
-// ==========================
-function updateAdminPanelVisibility(){
-  const panel = $('admin_panel');
-  const navBtn = $('nav_admin_btn');
-  const data = parseJWT(token() || '');
-  if(data.role === 'admin') {
-    panel.classList.remove('hidden');
-    navBtn.classList.remove('hidden');
-  } else {
-    panel.classList.add('hidden');
-    navBtn.classList.add('hidden');
-  }
-}
-
-const btnAdminQuery = $('btn_admin_query');
-if(btnAdminQuery){
-  btnAdminQuery.addEventListener('click', async ()=>{
-    const q = $('admin_query').value;
-    if(!q) return toast('Query required');
-
-    const r = await api('/api/admin/query', {
-      method:'POST',
-      body:{ q }
-    });
-
-    $('admin_response').textContent =
-      typeof r.body === 'string' ? r.body : JSON.stringify(r.body,null,2);
-  });
 }

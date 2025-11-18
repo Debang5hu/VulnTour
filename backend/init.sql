@@ -8,14 +8,25 @@ CREATE TABLE IF NOT EXISTS users (
   role TEXT NOT NULL DEFAULT 'user'
 );
 
+
+CREATE TABLE IF NOT EXISTS groups (
+  id TEXT PRIMARY KEY,
+  name TEXT,
+  destination TEXT
+);
+
+
 CREATE TABLE IF NOT EXISTS tours (
   id TEXT PRIMARY KEY,
   title TEXT,
   price INTEGER,
   ownerId TEXT,
   groupId TEXT,
+  location TEXT DEFAULT 'Unknown',
+  duration INTEGER DEFAULT 0,
+  description TEXT DEFAULT '',
   FOREIGN KEY(ownerId) REFERENCES users(id),
-  FOREIGN KEY(groupId) REFERENCES groups(id)
+  FOREIGN KEY(groupId) REFERENCES groups(id) ON DELETE CASCADE
 );
 
 
@@ -27,17 +38,13 @@ CREATE TABLE IF NOT EXISTS friends (
   FOREIGN KEY(friendId) REFERENCES users(id)
 );
 
-CREATE TABLE IF NOT EXISTS groups (
-  id TEXT PRIMARY KEY,
-  name TEXT,
-  destination TEXT
-);
+
 
 CREATE TABLE IF NOT EXISTS group_members (
   groupId TEXT,
   userId TEXT,
   UNIQUE(groupId, userId),
-  FOREIGN KEY(groupId) REFERENCES groups(id),
+  FOREIGN KEY(groupId) REFERENCES groups(id) ON DELETE CASCADE,
   FOREIGN KEY(userId) REFERENCES users(id)
 );
 
@@ -55,7 +62,7 @@ CREATE TABLE IF NOT EXISTS tour_joins (
   tourId TEXT,
   userId TEXT,
   UNIQUE(tourId, userId),
-  FOREIGN KEY(tourId) REFERENCES tours(id),
+  FOREIGN KEY(tourId) REFERENCES tours(id) ON DELETE CASCADE,
   FOREIGN KEY(userId) REFERENCES users(id)
 );
 
