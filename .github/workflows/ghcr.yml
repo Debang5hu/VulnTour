@@ -1,0 +1,39 @@
+name: Build & Push Frontend + Backend to GHCR
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      # Login to GHCR
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}  # it is automatically provided by github
+
+      # Build & push FRONTEND
+      - name: vulntour_frontend
+        run: |
+          docker build -t ghcr.io/${{ github.repository_owner }}/frontend:latest ./frontend
+
+      - name: push vulntour_frontend
+        run: |
+          docker push ghcr.io/${{ github.repository_owner }}/frontend:latest
+
+      # Build & push BACKEND
+      - name: vulntour_backend
+        run: |
+          docker build -t ghcr.io/${{ github.repository_owner }}/backend:latest ./backend
+
+      - name: push vulntour_backend
+        run: |
+          docker push ghcr.io/${{ github.repository_owner }}/backend:latest
