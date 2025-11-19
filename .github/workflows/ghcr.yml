@@ -23,17 +23,17 @@ jobs:
       # Build & push FRONTEND
       - name: vulntour_frontend
         run: |
-          docker build -t ghcr.io/${{ github.repository_owner }}/frontend:latest ./frontend
+          docker build -t ghcr.io/${{ vars.REPOSITORY_OWNER }}/frontend:latest ./frontend
 
       - name: push vulntour_frontend
         run: |
-          docker push ghcr.io/${{ github.repository_owner }}/frontend:latest
+          docker push ghcr.io/${{ vars.REPOSITORY_OWNER }}/frontend:latest
 
       # Build & push BACKEND
       - name: vulntour_backend
         run: |
-          docker build -t ghcr.io/${{ github.repository_owner }}/backend:latest ./backend
+          docker build -t ghcr.io/${{ vars.REPOSITORY_OWNER }}/backend:latest ./backend
 
       - name: push vulntour_backend
         run: |
-          docker push ghcr.io/${{ github.repository_owner }}/backend:latest
+          docker push ghcr.io/${{ vars.REPOSITORY_OWNER }}/backend:latest
