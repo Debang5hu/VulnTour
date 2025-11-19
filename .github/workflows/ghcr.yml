@@ -3,6 +3,7 @@ name: Build & Push Frontend + Backend to GHCR
 on:
   push:
     branches: [ main ]
+  workflow_dispatch:              # to trigger manually
 
 jobs:
   build:
